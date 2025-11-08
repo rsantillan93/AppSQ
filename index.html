@@ -72,51 +72,54 @@
   <div id="overlay2" class="overlay overlay-strong" hidden></div>
 
   <section id="editorSheet" class="sheet sheet-editor" role="dialog" aria-modal="true" hidden>
-    <div class="sheet__body editor-body">
-      <div class="editor-inner">
-        <div class="field">
-          <label for="ePlayer">Player</label>
-          <input id="ePlayer" class="input" type="text" placeholder="Enter player name">
-        </div>
+    <!-- cuerpo scrollable -->
+    <div class="sheet-scroll">
+      <div class="editor-body">
+        <div class="editor-inner">
+          <div class="field">
+            <label for="ePlayer">Player</label>
+            <input id="ePlayer" class="input" type="text" placeholder="Enter player name">
+          </div>
 
-        <div class="field">
-          <label for="eCategory">Category</label>
-          <select id="eCategory" class="select">
-            <option value="">Select…</option>
-            <option value="YOUTH">Youth</option>
-            <option value="ADULT">Adult</option>
-            <option value="WOMEN">Women</option>
-            <option value="STANDARD">Standard</option>
-          </select>
-        </div>
+          <div class="field">
+            <label for="eCategory">Category</label>
+            <select id="eCategory" class="select">
+              <option value="">Select…</option>
+              <option value="YOUTH">Youth</option>
+              <option value="ADULT">Adult</option>
+              <option value="WOMEN">Women</option>
+              <option value="STANDARD">Standard</option>
+            </select>
+          </div>
 
-        <div id="eSizeField" class="field" hidden>
-          <label>Size</label>
-          <div id="eSizes" class="size-row" role="radiogroup" aria-label="Size"></div>
-        </div>
+          <div id="eSizeField" class="field" hidden>
+            <label>Size</label>
+            <div id="eSizes" class="size-row" role="radiogroup" aria-label="Size"></div>
+          </div>
 
-        <div class="field">
-          <label for="eNumber">Number</label>
-          <input id="eNumber" class="input" type="tel" inputmode="numeric" pattern="[0-9]*" placeholder="e.g., 28">
-        </div>
+          <div class="field">
+            <label for="eNumber">Number</label>
+            <input id="eNumber" class="input" type="tel" inputmode="numeric" pattern="[0-9]*" placeholder="e.g., 28">
+          </div>
 
-        <div class="field">
-          <label for="eName">Name</label>
-          <input id="eName" class="input" type="text" placeholder="Custom name">
-        </div>
+          <div class="field">
+            <label for="eName">Name</label>
+            <input id="eName" class="input" type="text" placeholder="Custom name">
+          </div>
 
-        <div class="field">
-          <label>Units</label>
-          <div class="qty" role="group" aria-label="Units">
-            <button id="qMinus" class="qty__btn" aria-label="Decrease">−</button>
-            <input id="eUnits" class="qty__input" type="tel" inputmode="numeric" pattern="[0-9]*" min="1" max="100" value="1">
-            <button id="qPlus" class="qty__btn" aria-label="Increase">+</button>
+          <div class="field">
+            <label>Units</label>
+            <div class="qty" role="group" aria-label="Units">
+              <button id="qMinus" class="qty__btn" aria-label="Decrease">−</button>
+              <input id="eUnits" class="qty__input" type="tel" inputmode="numeric" pattern="[0-9]*" min="1" max="100" value="1">
+              <button id="qPlus" class="qty__btn" aria-label="Increase">+</button>
+            </div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Footer fijo al fondo de la CAJA -->
+    <!-- Footer ABSOLUTO dentro del sheet (siempre fijo) -->
     <div class="actions-footer" aria-live="polite">
       <div class="actions-inner">
         <div class="actions-row">
@@ -137,7 +140,27 @@
     const html        = document.documentElement;
     const overlay     = document.getElementById('rotate-overlay');
     const editorSheet = document.getElementById('editorSheet');
+    const sheet1      = document.getElementById('sheet');
+    const pageMain    = document.querySelector('main');
+    const pageHeader  = document.querySelector('header');
 
+    // ===== Bloqueo de fondo cuando Sheet 2 está abierto =====
+    function lockBackground(lock){
+      document.body.classList.toggle('modal-open', !!lock);
+      if (sheet1) sheet1.inert = !!lock;  // evita foco/gestos atrás (si el navegador soporta)
+      if (pageMain) pageMain.inert = !!lock;
+      if (pageHeader) pageHeader.inert = !!lock;
+      document.getElementById('overlay')?.classList.toggle('show', !!lock);
+    }
+
+    // Observa apertura/cierre del editor
+    new MutationObserver(() => {
+      const open = !editorSheet.hasAttribute('hidden');
+      lockBackground(open);
+      if (open) setTimeout(measureFooter, 50);
+    }).observe(editorSheet, { attributes: true, attributeFilter: ['hidden','class'] });
+
+    // ===== Orientación física real =====
     function isPhysicalLandscape() {
       try {
         if (screen.orientation && typeof screen.orientation.type === 'string') {
@@ -163,8 +186,9 @@
       }
     }
 
+    // ===== Footer metrics + teclado =====
     function measureFooter(){
-      const f = document.querySelector('#editorSheet .actions-footer');
+      const f = editorSheet.querySelector('.actions-footer');
       const h = Math.max(60, f ? (f.offsetHeight || 0) : 0);
       html.style.setProperty('--footer-h', h + 'px');
     }
@@ -174,30 +198,61 @@
       const vv = window.visualViewport;
       let t;
       const updateKb = () => {
-        const shrink = (window.innerHeight || 0) - (vv.height || 0);
-        const kbPx = Math.max(0, shrink);
-        html.style.setProperty('--kb-safe', kbPx ? kbPx + 'px' : '0px');
-
-        const tag = (document.activeElement?.tagName || '').toUpperCase();
+        const active = document.activeElement;
+        const tag = (active?.tagName || '').toUpperCase();
         const isField = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
-        const open = kbPx > 30 || (isField && kbPx > 0);
-        if (editorSheet) editorSheet.classList.toggle('kb-open', open);
 
+        const shrink = (window.innerHeight || 0) - (vv.height || 0);
+        // iOS numpad a veces reporta shrink bajo: forzamos abierto si input tipo tel/number
+        const isNumericField = isField && (
+          active.type === 'tel' ||
+          active.type === 'number' ||
+          active.inputMode === 'numeric' ||
+          active.inputMode === 'tel'
+        );
+
+        const kbPx = Math.max(0, shrink);
+        const open = kbPx > 24 || (isNumericField && kbPx >= 0); // fuerza estado en numpad iOS/Android
+
+        html.style.setProperty('--kb-safe', open ? (kbPx + 'px') : '0px');
+        editorSheet.classList.toggle('kb-open', open);
         measureFooter();
       };
       updateKb();
-      vv.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(updateKb, 50); }, { passive: true });
-      vv.addEventListener('scroll',  () => { clearTimeout(t); t = setTimeout(updateKb, 50); }, { passive: true });
+      vv.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(updateKb, 40); }, { passive: true });
+      vv.addEventListener('scroll',  () => { clearTimeout(t); t = setTimeout(updateKb, 40); }, { passive: true });
+      window.addEventListener('focusin', updateKb, { passive:true });
+      window.addEventListener('focusout', () => { setTimeout(updateKb, 40); }, { passive:true });
     }
 
-    (function observeSheet(){
-      if (!editorSheet) return;
-      const mo = new MutationObserver(() => {
-        if (!editorSheet.hasAttribute('hidden')) setTimeout(measureFooter, 50);
-      });
-      mo.observe(editorSheet, { attributes: true, attributeFilter: ['hidden','class'] });
+    // ===== Auto-scroll al enfocar campos (sin empujar botones) =====
+    (function focusScroll(){
+      const scrollBox = editorSheet.querySelector('.sheet-scroll');
+      if (!scrollBox) return;
+      function ensureInView(el){
+        try{
+          const r = el.getBoundingClientRect();
+          const box = scrollBox.getBoundingClientRect();
+          const padTop = 10;
+          const padBottom = 16 + parseInt(getComputedStyle(document.documentElement).getPropertyValue('--footer-h')) + parseInt(getComputedStyle(document.documentElement).getPropertyValue('--kb-safe'));
+          if (r.top < box.top + padTop) {
+            scrollBox.scrollBy({ top: r.top - box.top - padTop, behavior:'smooth' });
+          } else if (r.bottom > box.bottom - padBottom) {
+            scrollBox.scrollBy({ top: r.bottom - (box.bottom - padBottom), behavior:'smooth' });
+          }
+        }catch(_){}
+      }
+      scrollBox.addEventListener('focusin', e=>{
+        const t = e.target;
+        if (!t) return;
+        const tag = (t.tagName||'').toUpperCase();
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'){
+          setTimeout(()=>ensureInView(t), 35);
+        }
+      }, { passive:true });
     })();
 
+    // ===== Estado inicial / listeners =====
     applyOrientationLock();
     setupKeyboardSafeArea();
     window.addEventListener('pageshow', () => { applyOrientationLock(); measureFooter(); }, { passive:true });
@@ -207,26 +262,6 @@
     window.addEventListener('orientationchange', safeApply, { passive: true });
     window.addEventListener('resize', safeApply, { passive: true });
     document.addEventListener('visibilitychange', () => { if (!document.hidden) safeApply(); }, { passive: true });
-  })();
-  </script>
-
-  <script>
-  (function(){
-    const editorSheet = document.getElementById('editorSheet');
-    const editorBody  = editorSheet ? editorSheet.querySelector('.editor-body') : null;
-    if (!editorBody) return;
-
-    function ensureInView(target){
-      setTimeout(()=>{ try{ target.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' }); }catch(_){}} , 35);
-    }
-
-    editorBody.addEventListener('focusin', (e)=>{
-      const t = e.target; if (!t) return;
-      const tag = (t.tagName||'').toUpperCase();
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'){
-        ensureInView(t);
-      }
-    }, { passive:true });
   })();
   </script>
 </body>

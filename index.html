@@ -116,7 +116,7 @@
       </div>
     </div>
 
-    <!-- Footer dentro del sheet (NO fixed) -->
+    <!-- Footer dentro del sheet (sticky en la caja, no fixed) -->
     <div class="actions-footer">
       <div class="actions-inner">
         <div class="actions-row">
@@ -138,7 +138,6 @@
     const overlay     = document.getElementById('rotate-overlay');
     const editorSheet = document.getElementById('editorSheet');
 
-    // Detección robusta de orientación física (ignora teclado)
     function isPhysicalLandscape() {
       try {
         if (screen.orientation && typeof screen.orientation.type === 'string') {
@@ -148,18 +147,9 @@
           return Math.abs(screen.orientation.angle) === 90;
         }
       } catch (_) {}
-
-      if (typeof window.orientation === 'number') {
-        return Math.abs(window.orientation) === 90;
-      }
-
-      if (typeof screen.width === 'number' && typeof screen.height === 'number') {
-        return screen.width > screen.height;
-      }
-
-      try {
-        return !!window.matchMedia && window.matchMedia('(orientation: landscape)').matches;
-      } catch (_) { return false; }
+      if (typeof window.orientation === 'number') return Math.abs(window.orientation) === 90;
+      if (typeof screen.width === 'number' && typeof screen.height === 'number') return screen.width > screen.height;
+      try { return !!window.matchMedia && window.matchMedia('(orientation: landscape)').matches; } catch (_) { return false; }
     }
 
     function applyOrientationLock() {
@@ -173,22 +163,26 @@
       }
     }
 
-    // Medir footer y ajustar variables
     function measureFooter(){
       const f = document.querySelector('#editorSheet .actions-footer');
       const h = Math.max(60, f ? (f.offsetHeight || 0) : 0);
       html.style.setProperty('--footer-h', h + 'px');
     }
 
-    // Ajuste seguro para teclado (kb-safe) + elevar sheet
     function setupKeyboardSafeArea() {
       if (!('visualViewport' in window) || !window.visualViewport) return;
       const vv = window.visualViewport;
       let t;
       const updateKb = () => {
-        const kbPx = Math.max(0, (window.innerHeight || 0) - (vv.height || 0));
+        const shrink = (window.innerHeight || 0) - (vv.height || 0);
+        const kbPx = Math.max(0, shrink);
         html.style.setProperty('--kb-safe', kbPx ? kbPx + 'px' : '0px');
-        if (editorSheet) editorSheet.classList.toggle('kb-open', kbPx > 60);
+
+        const tag = (document.activeElement?.tagName || '').toUpperCase();
+        const isField = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+        const open = kbPx > 30 || (isField && kbPx > 0); // umbral más sensible que 60
+        if (editorSheet) editorSheet.classList.toggle('kb-open', open);
+
         measureFooter();
       };
       updateKb();
@@ -196,18 +190,14 @@
       vv.addEventListener('scroll',  () => { clearTimeout(t); t = setTimeout(updateKb, 50); }, { passive: true });
     }
 
-    // Observar apertura/cierre del editor para medir footer al mostrarse
     (() => {
       if (!editorSheet) return;
       const mo = new MutationObserver(() => {
-        if (!editorSheet.hasAttribute('hidden')) {
-          setTimeout(() => { measureFooter(); }, 50);
-        }
+        if (!editorSheet.hasAttribute('hidden')) setTimeout(measureFooter, 50);
       });
       mo.observe(editorSheet, { attributes: true, attributeFilter: ['hidden','class'] });
     })();
 
-    // Estado inicial
     applyOrientationLock();
     setupKeyboardSafeArea();
     window.addEventListener('pageshow', () => { applyOrientationLock(); measureFooter(); }, { passive:true });
@@ -229,14 +219,11 @@
     if (!editorBody) return;
 
     function ensureInView(target){
-      setTimeout(()=>{
-        try{ target.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' }); }catch(_){}
-      }, 35);
+      setTimeout(()=>{ try{ target.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' }); }catch(_){}} , 35);
     }
 
     editorBody.addEventListener('focusin', (e)=>{
-      const t = e.target;
-      if (!t) return;
+      const t = e.target; if (!t) return;
       const tag = (t.tagName||'').toUpperCase();
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'){
         ensureInView(t);

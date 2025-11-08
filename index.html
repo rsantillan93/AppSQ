@@ -126,7 +126,7 @@
 
   <script defer src="app.js"></script>
 
-  <!-- ROTATE / KEYBOARD SCRIPTS (tus existentes) -->
+  <!-- ROTATE + KEYBOARD (con histeresis y freeze) -->
   <script>
   (function () {
     const html        = document.documentElement;
@@ -160,38 +160,84 @@
       html.style.setProperty('--footer-h', h + 'px');
     }
 
+    // =================== setupKeyboardSafeArea con histeresis + freeze ===================
     (function setupKeyboardSafeArea(){
       const VV = window.visualViewport;
       if (!VV) return;
 
+      let lastApplied = 0;
+      let lastSample  = 0;
+      let stableCount = 0;
+      let ticking     = false;
+
       function computeKb(){
         const innerH = window.innerHeight || 0;
         const vvH    = VV.height || innerH;
-        const vvTop  = VV.offsetTop || 0;
-        const kb     = Math.max(0, innerH - (vvH + vvTop));
-        return kb;
+        const vvTop  = VV.offsetTop || 0; // iOS offset con teclado
+        return Math.max(0, innerH - (vvH + vvTop));
       }
 
-      function raf2(fn){ requestAnimationFrame(()=>requestAnimationFrame(fn)); }
-
-      function updateKb(){
-        const kb = computeKb();
+      function apply(kb){
         html.style.setProperty('--kb-safe', (kb>0? kb : 0) + 'px');
         if (editorSheet) editorSheet.classList.toggle('kb-open', kb > 0);
         measureFooter();
+        lastApplied = kb;
       }
 
-      raf2(updateKb);
-      setTimeout(updateKb, 180);
+      function freezeFooterFor(ms){
+        const cs = getComputedStyle(html).getPropertyValue('--kb-safe').trim();
+        html.style.setProperty('--footer-bottom-freeze', cs || '0px');
+        html.classList.add('footer-freeze');
+        setTimeout(()=>{ html.classList.remove('footer-freeze'); }, ms);
+      }
 
-      VV.addEventListener('resize', ()=>{ raf2(updateKb); setTimeout(updateKb, 120); }, {passive:true});
-      VV.addEventListener('scroll',  ()=>{ raf2(updateKb); }, {passive:true});
-      window.addEventListener('focusin',  ()=>{ raf2(updateKb); setTimeout(updateKb,120); }, {passive:true});
-      window.addEventListener('focusout', ()=>{ raf2(updateKb); setTimeout(updateKb,60);  }, {passive:true});
-      window.addEventListener('orientationchange', ()=>{ setTimeout(()=>{ raf2(updateKb); }, 180); }, {passive:true});
-      window.addEventListener('pageshow', ()=>{ raf2(updateKb); }, {passive:true});
+      function sample(){
+        const kb = computeKb();
+        const kbRounded = Math.max(0, Math.round(kb / 2) * 2); // evita ruido subpíxel
+
+        if (kbRounded === lastSample) {
+          stableCount++;
+        } else {
+          stableCount = 1;
+          lastSample  = kbRounded;
+        }
+
+        const isOpening = kbRounded > lastApplied;
+        const isClosing = kbRounded < lastApplied;
+
+        if (isOpening) {
+          apply(kbRounded); // apertura: inmediato
+        } else if (isClosing) {
+          if (stableCount === 1) {
+            freezeFooterFor(180); // primera lectura de cierre
+          }
+          if (stableCount >= 2) {
+            apply(kbRounded); // espera 2 frames estables
+          }
+        }
+        ticking = false;
+      }
+
+      function requestSample(){
+        if (ticking) return;
+        ticking = true;
+        requestAnimationFrame(()=>requestAnimationFrame(sample)); // 2 RAF
+      }
+
+      // Primer layout “bueno”
+      requestSample();
+      setTimeout(requestSample, 160);
+
+      // Eventos relevantes
+      VV.addEventListener('resize', requestSample, {passive:true});
+      VV.addEventListener('scroll',  requestSample, {passive:true});
+      window.addEventListener('focusin',  requestSample, {passive:true});
+      window.addEventListener('focusout', requestSample, {passive:true});
+      window.addEventListener('orientationchange', ()=>{ setTimeout(requestSample, 180); }, {passive:true});
+      window.addEventListener('pageshow', requestSample, {passive:true});
     })();
 
+    // Observar apertura/cierre del editor para medir footer al mostrarse
     (() => {
       if (!editorSheet) return;
       const mo = new MutationObserver(() => {
@@ -233,7 +279,7 @@
   })();
   </script>
 
-  <!-- FIX: TAP CON UMBRAL + OVERLAY SHOW (no rompe scroll) -->
+  <!-- TAP con umbral + overlay seguro -->
   <script>
   (function(){
     const $       = (s, r=document) => r.querySelector(s);
@@ -243,7 +289,6 @@
 
     if (!overlay || !sheet || !grid) return;
 
-    // Mostrar/ocultar Sheet1 con overlay capturando eventos
     function openSheet1(){
       if (sheet.classList.contains('show')) return;
       overlay.removeAttribute('hidden');
@@ -260,67 +305,47 @@
       overlay.setAttribute('hidden','');
       document.body.classList.remove('modal-open');
     }
-    // back y overlay para cerrar
-    $('#sheetBack')?.addEventListener('click', closeSheet1);
+    document.getElementById('sheetBack')?.addEventListener('click', closeSheet1);
     overlay.addEventListener('pointerdown', (e)=>{ e.preventDefault(); e.stopPropagation(); closeSheet1(); }, {passive:false});
     sheet.addEventListener('pointerdown', (e)=>{ e.stopPropagation(); }, {passive:true});
 
-    // --- Tap con umbral (permite desplazarse sin abrir nada) ---
-    const TAP_MOVE_PX = 8;      // tolerancia de arrastre
-    const TAP_TIME_MS = 500;    // tap corto
+    const TAP_MOVE_PX = 8;
+    const TAP_TIME_MS = 500;
     let active = null;
 
     grid.addEventListener('pointerdown', (e) => {
       const btn = e.target.closest('.btn');
       if (!btn) { active = null; return; }
-
-      active = {
-        id: e.pointerId,
-        t0: performance.now(),
-        x0: e.clientX,
-        y0: e.clientY,
-        btn
-      };
-      // no preventDefault aquí → permite scroll natural
+      active = { id:e.pointerId, t0:performance.now(), x0:e.clientX, y0:e.clientY, btn };
     }, {passive:true});
 
     grid.addEventListener('pointermove', (e) => {
       if (!active || e.pointerId !== active.id) return;
       const dx = Math.abs(e.clientX - active.x0);
       const dy = Math.abs(e.clientY - active.y0);
-      if (dx > TAP_MOVE_PX || dy > TAP_MOVE_PX) {
-        active.cancelled = true; // pasó a gesto de scroll/arrastre
-      }
+      if (dx > TAP_MOVE_PX || dy > TAP_MOVE_PX) active.cancelled = true;
     }, {passive:true});
 
-    // En pointerup validamos que fue un tap, recién ahí abrimos la sheet
     grid.addEventListener('pointerup', (e) => {
       if (!active || e.pointerId !== active.id) { active = null; return; }
-
       const dt = performance.now() - active.t0;
       const dx = Math.abs(e.clientX - active.x0);
       const dy = Math.abs(e.clientY - active.y0);
       const sameBtn = !!e.target.closest('.btn') && e.target.closest('.btn') === active.btn;
 
       if (!active.cancelled && sameBtn && dt <= TAP_TIME_MS && dx <= TAP_MOVE_PX && dy <= TAP_MOVE_PX) {
-        e.preventDefault();
-        e.stopPropagation();
-        openSheet1();
+        e.preventDefault(); e.stopPropagation(); openSheet1();
       }
       active = null;
     }, {passive:false});
 
-    // Si el puntero se cancela (ej. scroll fuerte), no hacemos nada
     grid.addEventListener('pointercancel', () => { active = null; }, {passive:true});
-    // Click de teclado/desktop como fallback accesible
     grid.addEventListener('click', (e) => {
       const btn = e.target.closest('.btn');
       if (!btn) return;
-      // Si hubo pointer con movimiento, ya se manejó; si no, permite click accesible:
       if (!sheet.classList.contains('show')) openSheet1();
     });
 
-    // Expone por si lo usás desde app.js
     if (!('openSheet1' in window))  window.openSheet1  = openSheet1;
     if (!('closeSheet1' in window)) window.closeSheet1 = closeSheet1;
   })();

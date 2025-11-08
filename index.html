@@ -126,6 +126,7 @@
 
   <script defer src="app.js"></script>
 
+  <!-- ROTATE / KEYBOARD SCRIPTS (tus existentes) -->
   <script>
   (function () {
     const html        = document.documentElement;
@@ -159,7 +160,6 @@
       html.style.setProperty('--footer-h', h + 'px');
     }
 
-    /* ====== iOS keyboard safe area robusta ====== */
     (function setupKeyboardSafeArea(){
       const VV = window.visualViewport;
       if (!VV) return;
@@ -176,7 +176,7 @@
 
       function updateKb(){
         const kb = computeKb();
-        document.documentElement.style.setProperty('--kb-safe', (kb>0? kb : 0) + 'px');
+        html.style.setProperty('--kb-safe', (kb>0? kb : 0) + 'px');
         if (editorSheet) editorSheet.classList.toggle('kb-open', kb > 0);
         measureFooter();
       }
@@ -233,75 +233,96 @@
   })();
   </script>
 
-  <!-- ===== Fix mínimo y seguro: overlay + sheet anti "tap fantasma" (Android) ===== -->
+  <!-- FIX: TAP CON UMBRAL + OVERLAY SHOW (no rompe scroll) -->
   <script>
   (function(){
-    const $ = (s, r=document) => r.querySelector(s);
+    const $       = (s, r=document) => r.querySelector(s);
     const overlay = $('#overlay');
     const sheet   = $('#sheet');
     const grid    = $('#itemsGrid');
-    const backBtn = $('#sheetBack');
 
     if (!overlay || !sheet || !grid) return;
 
-    let openingGuard = false;
-
+    // Mostrar/ocultar Sheet1 con overlay capturando eventos
     function openSheet1(){
-      if (sheet.classList.contains('show') || openingGuard) return;
-      openingGuard = true;
-
+      if (sheet.classList.contains('show')) return;
       overlay.removeAttribute('hidden');
       overlay.classList.add('show');
       document.body.classList.add('modal-open');
 
       sheet.removeAttribute('hidden');
       sheet.classList.add('show');
-
-      setTimeout(()=>{ openingGuard = false; }, 120);
     }
-
     function closeSheet1(){
       sheet.classList.remove('show');
       sheet.setAttribute('hidden','');
-
       overlay.classList.remove('show');
       overlay.setAttribute('hidden','');
-
       document.body.classList.remove('modal-open');
     }
+    // back y overlay para cerrar
+    $('#sheetBack')?.addEventListener('click', closeSheet1);
+    overlay.addEventListener('pointerdown', (e)=>{ e.preventDefault(); e.stopPropagation(); closeSheet1(); }, {passive:false});
+    sheet.addEventListener('pointerdown', (e)=>{ e.stopPropagation(); }, {passive:true});
 
-    if (!('openSheet1' in window))  window.openSheet1  = openSheet1;
-    if (!('closeSheet1' in window)) window.closeSheet1 = closeSheet1;
+    // --- Tap con umbral (permite desplazarse sin abrir nada) ---
+    const TAP_MOVE_PX = 8;      // tolerancia de arrastre
+    const TAP_TIME_MS = 500;    // tap corto
+    let active = null;
 
-    // Abre desde botones del grid (usa pointerdown para evitar click duplicado)
     grid.addEventListener('pointerdown', (e) => {
       const btn = e.target.closest('.btn');
-      if (!btn) return;
-      e.preventDefault();
-      e.stopPropagation();
-      openSheet1();
-    }, {passive:false});
+      if (!btn) { active = null; return; }
 
-    // Cierra con overlay
-    overlay.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      closeSheet1();
-    }, {passive:false});
+      active = {
+        id: e.pointerId,
+        t0: performance.now(),
+        x0: e.clientX,
+        y0: e.clientY,
+        btn
+      };
+      // no preventDefault aquí → permite scroll natural
+    }, {passive:true});
 
-    // Cierra con back
-    if (backBtn){
-      backBtn.addEventListener('pointerdown', (e) => {
+    grid.addEventListener('pointermove', (e) => {
+      if (!active || e.pointerId !== active.id) return;
+      const dx = Math.abs(e.clientX - active.x0);
+      const dy = Math.abs(e.clientY - active.y0);
+      if (dx > TAP_MOVE_PX || dy > TAP_MOVE_PX) {
+        active.cancelled = true; // pasó a gesto de scroll/arrastre
+      }
+    }, {passive:true});
+
+    // En pointerup validamos que fue un tap, recién ahí abrimos la sheet
+    grid.addEventListener('pointerup', (e) => {
+      if (!active || e.pointerId !== active.id) { active = null; return; }
+
+      const dt = performance.now() - active.t0;
+      const dx = Math.abs(e.clientX - active.x0);
+      const dy = Math.abs(e.clientY - active.y0);
+      const sameBtn = !!e.target.closest('.btn') && e.target.closest('.btn') === active.btn;
+
+      if (!active.cancelled && sameBtn && dt <= TAP_TIME_MS && dx <= TAP_MOVE_PX && dy <= TAP_MOVE_PX) {
         e.preventDefault();
         e.stopPropagation();
-        closeSheet1();
-      }, {passive:false});
-    }
+        openSheet1();
+      }
+      active = null;
+    }, {passive:false});
 
-    // No propagar dentro de la sheet
-    sheet.addEventListener('pointerdown', (e) => {
-      e.stopPropagation();
-    }, {passive:true});
+    // Si el puntero se cancela (ej. scroll fuerte), no hacemos nada
+    grid.addEventListener('pointercancel', () => { active = null; }, {passive:true});
+    // Click de teclado/desktop como fallback accesible
+    grid.addEventListener('click', (e) => {
+      const btn = e.target.closest('.btn');
+      if (!btn) return;
+      // Si hubo pointer con movimiento, ya se manejó; si no, permite click accesible:
+      if (!sheet.classList.contains('show')) openSheet1();
+    });
+
+    // Expone por si lo usás desde app.js
+    if (!('openSheet1' in window))  window.openSheet1  = openSheet1;
+    if (!('closeSheet1' in window)) window.closeSheet1 = closeSheet1;
   })();
   </script>
 </body>

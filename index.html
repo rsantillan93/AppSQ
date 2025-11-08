@@ -72,6 +72,13 @@
   <div id="overlay2" class="overlay overlay-strong" hidden></div>
 
   <section id="editorSheet" class="sheet sheet-editor" role="dialog" aria-modal="true" hidden>
+    <!-- Fila 1: Header del sheet -->
+    <div class="sheet__header">
+      <button id="sheetBack2" class="sheet__back" aria-label="Back">←</button>
+      <div class="sheet__title">Edit Item</div>
+    </div>
+
+    <!-- Fila 2: Body con scroll -->
     <div class="sheet__body editor-body">
       <div class="editor-inner">
         <div class="field">
@@ -116,7 +123,7 @@
       </div>
     </div>
 
-    <!-- Footer dentro del sheet (sticky en la caja, no fixed) -->
+    <!-- Fila 3: Footer fijo (no se mueve con el scroll del body) -->
     <div class="actions-footer">
       <div class="actions-inner">
         <div class="actions-row">
@@ -138,6 +145,7 @@
     const overlay     = document.getElementById('rotate-overlay');
     const editorSheet = document.getElementById('editorSheet');
 
+    // Detección de orientación física real (ignora teclado)
     function isPhysicalLandscape() {
       try {
         if (screen.orientation && typeof screen.orientation.type === 'string') {
@@ -163,12 +171,14 @@
       }
     }
 
+    // Medir footer → variable CSS para scroll-padding-bottom del body
     function measureFooter(){
       const f = document.querySelector('#editorSheet .actions-footer');
       const h = Math.max(60, f ? (f.offsetHeight || 0) : 0);
       html.style.setProperty('--footer-h', h + 'px');
     }
 
+    // Safe area de teclado y ajuste de alto de la caja del sheet (no del body)
     function setupKeyboardSafeArea() {
       if (!('visualViewport' in window) || !window.visualViewport) return;
       const vv = window.visualViewport;
@@ -180,7 +190,7 @@
 
         const tag = (document.activeElement?.tagName || '').toUpperCase();
         const isField = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
-        const open = kbPx > 30 || (isField && kbPx > 0); // umbral más sensible que 60
+        const open = kbPx > 30 || (isField && kbPx > 0);
         if (editorSheet) editorSheet.classList.toggle('kb-open', open);
 
         measureFooter();
@@ -190,6 +200,7 @@
       vv.addEventListener('scroll',  () => { clearTimeout(t); t = setTimeout(updateKb, 50); }, { passive: true });
     }
 
+    // Re-medir footer cuando aparece el sheet o cambia kb-open
     (() => {
       if (!editorSheet) return;
       const mo = new MutationObserver(() => {

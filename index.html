@@ -165,7 +165,6 @@
       if (!VV) return;
 
       function computeKb(){
-        // Diferencia real considerando offsetTop de la viewport visual (iOS)
         const innerH = window.innerHeight || 0;
         const vvH    = VV.height || innerH;
         const vvTop  = VV.offsetTop || 0;
@@ -177,14 +176,13 @@
 
       function updateKb(){
         const kb = computeKb();
-        html.style.setProperty('--kb-safe', (kb>0? kb : 0) + 'px');
+        document.documentElement.style.setProperty('--kb-safe', (kb>0? kb : 0) + 'px');
         if (editorSheet) editorSheet.classList.toggle('kb-open', kb > 0);
         measureFooter();
       }
 
-      // Primer layout correcto al abrir
       raf2(updateKb);
-      setTimeout(updateKb, 180); // cuando termina la animación del teclado
+      setTimeout(updateKb, 180);
 
       VV.addEventListener('resize', ()=>{ raf2(updateKb); setTimeout(updateKb, 120); }, {passive:true});
       VV.addEventListener('scroll',  ()=>{ raf2(updateKb); }, {passive:true});
@@ -194,7 +192,6 @@
       window.addEventListener('pageshow', ()=>{ raf2(updateKb); }, {passive:true});
     })();
 
-    // Observar apertura/cierre del editor para medir footer al mostrarse
     (() => {
       if (!editorSheet) return;
       const mo = new MutationObserver(() => {
@@ -233,6 +230,78 @@
       const tag = (t.tagName||'').toUpperCase();
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'){ ensureInView(t); }
     }, { passive:true });
+  })();
+  </script>
+
+  <!-- ===== Fix mínimo y seguro: overlay + sheet anti "tap fantasma" (Android) ===== -->
+  <script>
+  (function(){
+    const $ = (s, r=document) => r.querySelector(s);
+    const overlay = $('#overlay');
+    const sheet   = $('#sheet');
+    const grid    = $('#itemsGrid');
+    const backBtn = $('#sheetBack');
+
+    if (!overlay || !sheet || !grid) return;
+
+    let openingGuard = false;
+
+    function openSheet1(){
+      if (sheet.classList.contains('show') || openingGuard) return;
+      openingGuard = true;
+
+      overlay.removeAttribute('hidden');
+      overlay.classList.add('show');
+      document.body.classList.add('modal-open');
+
+      sheet.removeAttribute('hidden');
+      sheet.classList.add('show');
+
+      setTimeout(()=>{ openingGuard = false; }, 120);
+    }
+
+    function closeSheet1(){
+      sheet.classList.remove('show');
+      sheet.setAttribute('hidden','');
+
+      overlay.classList.remove('show');
+      overlay.setAttribute('hidden','');
+
+      document.body.classList.remove('modal-open');
+    }
+
+    if (!('openSheet1' in window))  window.openSheet1  = openSheet1;
+    if (!('closeSheet1' in window)) window.closeSheet1 = closeSheet1;
+
+    // Abre desde botones del grid (usa pointerdown para evitar click duplicado)
+    grid.addEventListener('pointerdown', (e) => {
+      const btn = e.target.closest('.btn');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      openSheet1();
+    }, {passive:false});
+
+    // Cierra con overlay
+    overlay.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeSheet1();
+    }, {passive:false});
+
+    // Cierra con back
+    if (backBtn){
+      backBtn.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        closeSheet1();
+      }, {passive:false});
+    }
+
+    // No propagar dentro de la sheet
+    sheet.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+    }, {passive:true});
   })();
   </script>
 </body>

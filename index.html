@@ -12,7 +12,7 @@
 </head>
 <body>
 
-  <!-- Rotate Overlay -->
+  <!-- Rotate Overlay (portrait-only enforcement) -->
   <div id="rotate-overlay" role="dialog" aria-live="assertive" aria-hidden="true">
     <div class="rotate-card" role="document">
       <svg class="phone-icon" viewBox="0 0 64 64" aria-hidden="true">
@@ -47,25 +47,30 @@
     <div id="empty" class="empty" hidden>No data for that order.</div>
   </main>
 
-  <!-- SHEET 1: LIST -->
+  <!-- ===== SHEET 1: LIST ===== -->
   <div id="overlay" class="overlay" hidden></div>
+
   <section id="sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
     <div class="sheet__header">
       <button id="sheetBack" class="sheet__back" aria-label="Back">←</button>
       <div class="sheet__title" id="sheetTitle">Selected Item</div>
     </div>
+
     <div class="sheet__body sheet1-body">
       <button id="btnAdd" class="cta">Add</button>
+
       <div id="summary" class="summary" aria-live="polite">
         <div><b>Total players:</b> 0</div>
         <div id="summarySizes">Sizes: —</div>
       </div>
+
       <div id="list" class="list" role="list"></div>
     </div>
   </section>
 
-  <!-- SHEET 2: EDITOR -->
+  <!-- ===== SHEET 2: EDITOR ===== -->
   <div id="overlay2" class="overlay overlay-strong" hidden></div>
+
   <section id="editorSheet" class="sheet sheet-editor" role="dialog" aria-modal="true" hidden>
     <div class="sheet__body editor-body">
       <div class="editor-inner">
@@ -111,6 +116,7 @@
       </div>
     </div>
 
+    <!-- Footer dentro del sheet (NO fixed) -->
     <div class="actions-footer">
       <div class="actions-inner">
         <div class="actions-row">
@@ -126,21 +132,34 @@
 
   <script defer src="app.js"></script>
 
-  <!-- ROTATE + KEYBOARD (con histeresis y freeze) -->
   <script>
   (function () {
     const html        = document.documentElement;
     const overlay     = document.getElementById('rotate-overlay');
     const editorSheet = document.getElementById('editorSheet');
 
+    // Detección robusta de orientación física (ignora teclado)
     function isPhysicalLandscape() {
       try {
-        if (screen.orientation && typeof screen.orientation.type === 'string') return screen.orientation.type.startsWith('landscape');
-        if (typeof screen.orientation?.angle === 'number') return Math.abs(screen.orientation.angle) === 90;
-      } catch(_) {}
-      if (typeof window.orientation === 'number') return Math.abs(window.orientation) === 90;
-      if (typeof screen.width === 'number' && typeof screen.height === 'number') return screen.width > screen.height;
-      try { return !!window.matchMedia && window.matchMedia('(orientation: landscape)').matches; } catch(_) { return false; }
+        if (screen.orientation && typeof screen.orientation.type === 'string') {
+          return screen.orientation.type.startsWith('landscape');
+        }
+        if (typeof screen.orientation?.angle === 'number') {
+          return Math.abs(screen.orientation.angle) === 90;
+        }
+      } catch (_) {}
+
+      if (typeof window.orientation === 'number') {
+        return Math.abs(window.orientation) === 90;
+      }
+
+      if (typeof screen.width === 'number' && typeof screen.height === 'number') {
+        return screen.width > screen.height;
+      }
+
+      try {
+        return !!window.matchMedia && window.matchMedia('(orientation: landscape)').matches;
+      } catch (_) { return false; }
     }
 
     function applyOrientationLock() {
@@ -154,88 +173,28 @@
       }
     }
 
+    // Medir footer y ajustar variables
     function measureFooter(){
       const f = document.querySelector('#editorSheet .actions-footer');
       const h = Math.max(60, f ? (f.offsetHeight || 0) : 0);
       html.style.setProperty('--footer-h', h + 'px');
     }
 
-    // =================== setupKeyboardSafeArea con histeresis + freeze ===================
-    (function setupKeyboardSafeArea(){
-      const VV = window.visualViewport;
-      if (!VV) return;
-
-      let lastApplied = 0;
-      let lastSample  = 0;
-      let stableCount = 0;
-      let ticking     = false;
-
-      function computeKb(){
-        const innerH = window.innerHeight || 0;
-        const vvH    = VV.height || innerH;
-        const vvTop  = VV.offsetTop || 0; // iOS offset con teclado
-        return Math.max(0, innerH - (vvH + vvTop));
-      }
-
-      function apply(kb){
-        html.style.setProperty('--kb-safe', (kb>0? kb : 0) + 'px');
-        if (editorSheet) editorSheet.classList.toggle('kb-open', kb > 0);
+    // Ajuste seguro para teclado (kb-safe) + elevar sheet
+    function setupKeyboardSafeArea() {
+      if (!('visualViewport' in window) || !window.visualViewport) return;
+      const vv = window.visualViewport;
+      let t;
+      const updateKb = () => {
+        const kbPx = Math.max(0, (window.innerHeight || 0) - (vv.height || 0));
+        html.style.setProperty('--kb-safe', kbPx ? kbPx + 'px' : '0px');
+        if (editorSheet) editorSheet.classList.toggle('kb-open', kbPx > 60);
         measureFooter();
-        lastApplied = kb;
-      }
-
-      function freezeFooterFor(ms){
-        const cs = getComputedStyle(html).getPropertyValue('--kb-safe').trim();
-        html.style.setProperty('--footer-bottom-freeze', cs || '0px');
-        html.classList.add('footer-freeze');
-        setTimeout(()=>{ html.classList.remove('footer-freeze'); }, ms);
-      }
-
-      function sample(){
-        const kb = computeKb();
-        const kbRounded = Math.max(0, Math.round(kb / 2) * 2); // evita ruido subpíxel
-
-        if (kbRounded === lastSample) {
-          stableCount++;
-        } else {
-          stableCount = 1;
-          lastSample  = kbRounded;
-        }
-
-        const isOpening = kbRounded > lastApplied;
-        const isClosing = kbRounded < lastApplied;
-
-        if (isOpening) {
-          apply(kbRounded); // apertura: inmediato
-        } else if (isClosing) {
-          if (stableCount === 1) {
-            freezeFooterFor(180); // primera lectura de cierre
-          }
-          if (stableCount >= 2) {
-            apply(kbRounded); // espera 2 frames estables
-          }
-        }
-        ticking = false;
-      }
-
-      function requestSample(){
-        if (ticking) return;
-        ticking = true;
-        requestAnimationFrame(()=>requestAnimationFrame(sample)); // 2 RAF
-      }
-
-      // Primer layout “bueno”
-      requestSample();
-      setTimeout(requestSample, 160);
-
-      // Eventos relevantes
-      VV.addEventListener('resize', requestSample, {passive:true});
-      VV.addEventListener('scroll',  requestSample, {passive:true});
-      window.addEventListener('focusin',  requestSample, {passive:true});
-      window.addEventListener('focusout', requestSample, {passive:true});
-      window.addEventListener('orientationchange', ()=>{ setTimeout(requestSample, 180); }, {passive:true});
-      window.addEventListener('pageshow', requestSample, {passive:true});
-    })();
+      };
+      updateKb();
+      vv.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(updateKb, 50); }, { passive: true });
+      vv.addEventListener('scroll',  () => { clearTimeout(t); t = setTimeout(updateKb, 50); }, { passive: true });
+    }
 
     // Observar apertura/cierre del editor para medir footer al mostrarse
     (() => {
@@ -248,7 +207,9 @@
       mo.observe(editorSheet, { attributes: true, attributeFilter: ['hidden','class'] });
     })();
 
+    // Estado inicial
     applyOrientationLock();
+    setupKeyboardSafeArea();
     window.addEventListener('pageshow', () => { applyOrientationLock(); measureFooter(); }, { passive:true });
 
     const safeApply = () => setTimeout(applyOrientationLock, 0);
@@ -268,86 +229,19 @@
     if (!editorBody) return;
 
     function ensureInView(target){
-      setTimeout(()=>{ try{ target.scrollIntoView({ block:'nearest', inline:'nearest', behavior:'smooth' }); }catch(_){}} , 35);
+      setTimeout(()=>{
+        try{ target.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' }); }catch(_){}
+      }, 35);
     }
 
     editorBody.addEventListener('focusin', (e)=>{
-      const t = e.target; if (!t) return;
+      const t = e.target;
+      if (!t) return;
       const tag = (t.tagName||'').toUpperCase();
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'){ ensureInView(t); }
-    }, { passive:true });
-  })();
-  </script>
-
-  <!-- TAP con umbral + overlay seguro -->
-  <script>
-  (function(){
-    const $       = (s, r=document) => r.querySelector(s);
-    const overlay = $('#overlay');
-    const sheet   = $('#sheet');
-    const grid    = $('#itemsGrid');
-
-    if (!overlay || !sheet || !grid) return;
-
-    function openSheet1(){
-      if (sheet.classList.contains('show')) return;
-      overlay.removeAttribute('hidden');
-      overlay.classList.add('show');
-      document.body.classList.add('modal-open');
-
-      sheet.removeAttribute('hidden');
-      sheet.classList.add('show');
-    }
-    function closeSheet1(){
-      sheet.classList.remove('show');
-      sheet.setAttribute('hidden','');
-      overlay.classList.remove('show');
-      overlay.setAttribute('hidden','');
-      document.body.classList.remove('modal-open');
-    }
-    document.getElementById('sheetBack')?.addEventListener('click', closeSheet1);
-    overlay.addEventListener('pointerdown', (e)=>{ e.preventDefault(); e.stopPropagation(); closeSheet1(); }, {passive:false});
-    sheet.addEventListener('pointerdown', (e)=>{ e.stopPropagation(); }, {passive:true});
-
-    const TAP_MOVE_PX = 8;
-    const TAP_TIME_MS = 500;
-    let active = null;
-
-    grid.addEventListener('pointerdown', (e) => {
-      const btn = e.target.closest('.btn');
-      if (!btn) { active = null; return; }
-      active = { id:e.pointerId, t0:performance.now(), x0:e.clientX, y0:e.clientY, btn };
-    }, {passive:true});
-
-    grid.addEventListener('pointermove', (e) => {
-      if (!active || e.pointerId !== active.id) return;
-      const dx = Math.abs(e.clientX - active.x0);
-      const dy = Math.abs(e.clientY - active.y0);
-      if (dx > TAP_MOVE_PX || dy > TAP_MOVE_PX) active.cancelled = true;
-    }, {passive:true});
-
-    grid.addEventListener('pointerup', (e) => {
-      if (!active || e.pointerId !== active.id) { active = null; return; }
-      const dt = performance.now() - active.t0;
-      const dx = Math.abs(e.clientX - active.x0);
-      const dy = Math.abs(e.clientY - active.y0);
-      const sameBtn = !!e.target.closest('.btn') && e.target.closest('.btn') === active.btn;
-
-      if (!active.cancelled && sameBtn && dt <= TAP_TIME_MS && dx <= TAP_MOVE_PX && dy <= TAP_MOVE_PX) {
-        e.preventDefault(); e.stopPropagation(); openSheet1();
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'){
+        ensureInView(t);
       }
-      active = null;
-    }, {passive:false});
-
-    grid.addEventListener('pointercancel', () => { active = null; }, {passive:true});
-    grid.addEventListener('click', (e) => {
-      const btn = e.target.closest('.btn');
-      if (!btn) return;
-      if (!sheet.classList.contains('show')) openSheet1();
-    });
-
-    if (!('openSheet1' in window))  window.openSheet1  = openSheet1;
-    if (!('closeSheet1' in window)) window.closeSheet1 = closeSheet1;
+    }, { passive:true });
   })();
   </script>
 </body>

@@ -186,7 +186,16 @@ body.modal-open{ overflow:hidden; }
   padding:12px 16px;
   touch-action: manipulation;
   width:100vw; /* importante para Safari al abrir teclado */
+
+  /* ---- NUEVO: optimiza el repintado y evita jank en el parpadeo ---- */
+  will-change: transform, bottom;
+  contain: layout paint;
 }
+/* ---- NUEVO: “congelación” temporal al cerrar teclado ---- */
+html.footer-freeze .actions-footer{
+  bottom: var(--footer-bottom-freeze, 0px) !important;
+}
+
 .actions-inner{ display:grid; gap:10px; }
 .actions-row{ display:grid; grid-template-columns: 1fr; gap:10px; }
 .actions-row.two{ grid-template-columns: 1fr 1fr; gap:10px; }

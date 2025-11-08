@@ -144,7 +144,7 @@ body.modal-open{ overflow:hidden; }
   margin-top: 12px; opacity:0;
   transition: margin-top .2s ease, opacity .2s ease;
   pointer-events:none;
-  overflow:hidden;
+  /*overflow:hidden; */
   display:flex; flex-direction:column;
 }
 .sheet.show{ margin-top: 0; opacity:1; pointer-events:auto; }
@@ -227,13 +227,15 @@ body.modal-open{ overflow:hidden; }
 }
 
 .actions-footer{
-  position:fixed;
+  position:sticky;
   left:0; right:0;
-  bottom: calc(var(--kb-safe, 0px));
-  z-index:2150;
+  bottom: 0;
+  z-index:0;
   background:#fff; border-top:1px solid #ddd;
   padding:12px 16px;
   touch-action: manipulation;
+  border-radius: 0 0 18px 18px;
+  margin-bottom: calc(var(--kb-safe, 0px));
 }
 .actions-inner{ display:grid; gap:10px; }
 .actions-row{ display:grid; grid-template-columns: 1fr; gap:10px; }

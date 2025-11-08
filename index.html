@@ -12,7 +12,7 @@
 </head>
 <body>
 
-  <!-- Rotate Overlay (portrait-only enforcement) -->
+  <!-- Rotate Overlay -->
   <div id="rotate-overlay" role="dialog" aria-live="assertive" aria-hidden="true">
     <div class="rotate-card" role="document">
       <svg class="phone-icon" viewBox="0 0 64 64" aria-hidden="true">
@@ -47,30 +47,25 @@
     <div id="empty" class="empty" hidden>No data for that order.</div>
   </main>
 
-  <!-- ===== SHEET 1: LIST ===== -->
+  <!-- SHEET 1: LIST -->
   <div id="overlay" class="overlay" hidden></div>
-
   <section id="sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
     <div class="sheet__header">
       <button id="sheetBack" class="sheet__back" aria-label="Back">←</button>
       <div class="sheet__title" id="sheetTitle">Selected Item</div>
     </div>
-
     <div class="sheet__body sheet1-body">
       <button id="btnAdd" class="cta">Add</button>
-
       <div id="summary" class="summary" aria-live="polite">
         <div><b>Total players:</b> 0</div>
         <div id="summarySizes">Sizes: —</div>
       </div>
-
       <div id="list" class="list" role="list"></div>
     </div>
   </section>
 
-  <!-- ===== SHEET 2: EDITOR ===== -->
+  <!-- SHEET 2: EDITOR -->
   <div id="overlay2" class="overlay overlay-strong" hidden></div>
-
   <section id="editorSheet" class="sheet sheet-editor" role="dialog" aria-modal="true" hidden>
     <div class="sheet__body editor-body">
       <div class="editor-inner">
@@ -116,7 +111,6 @@
       </div>
     </div>
 
-    <!-- Footer dentro del sheet (NO fixed) -->
     <div class="actions-footer">
       <div class="actions-inner">
         <div class="actions-row">
@@ -138,28 +132,14 @@
     const overlay     = document.getElementById('rotate-overlay');
     const editorSheet = document.getElementById('editorSheet');
 
-    // Detección robusta de orientación física (ignora teclado)
     function isPhysicalLandscape() {
       try {
-        if (screen.orientation && typeof screen.orientation.type === 'string') {
-          return screen.orientation.type.startsWith('landscape');
-        }
-        if (typeof screen.orientation?.angle === 'number') {
-          return Math.abs(screen.orientation.angle) === 90;
-        }
-      } catch (_) {}
-
-      if (typeof window.orientation === 'number') {
-        return Math.abs(window.orientation) === 90;
-      }
-
-      if (typeof screen.width === 'number' && typeof screen.height === 'number') {
-        return screen.width > screen.height;
-      }
-
-      try {
-        return !!window.matchMedia && window.matchMedia('(orientation: landscape)').matches;
-      } catch (_) { return false; }
+        if (screen.orientation && typeof screen.orientation.type === 'string') return screen.orientation.type.startsWith('landscape');
+        if (typeof screen.orientation?.angle === 'number') return Math.abs(screen.orientation.angle) === 90;
+      } catch(_) {}
+      if (typeof window.orientation === 'number') return Math.abs(window.orientation) === 90;
+      if (typeof screen.width === 'number' && typeof screen.height === 'number') return screen.width > screen.height;
+      try { return !!window.matchMedia && window.matchMedia('(orientation: landscape)').matches; } catch(_) { return false; }
     }
 
     function applyOrientationLock() {
@@ -173,28 +153,46 @@
       }
     }
 
-    // Medir footer y ajustar variables
     function measureFooter(){
       const f = document.querySelector('#editorSheet .actions-footer');
       const h = Math.max(60, f ? (f.offsetHeight || 0) : 0);
       html.style.setProperty('--footer-h', h + 'px');
     }
 
-    // Ajuste seguro para teclado (kb-safe) + elevar sheet
-    function setupKeyboardSafeArea() {
-      if (!('visualViewport' in window) || !window.visualViewport) return;
-      const vv = window.visualViewport;
-      let t;
-      const updateKb = () => {
-        const kbPx = Math.max(0, (window.innerHeight || 0) - (vv.height || 0));
-        html.style.setProperty('--kb-safe', kbPx ? kbPx + 'px' : '0px');
-        if (editorSheet) editorSheet.classList.toggle('kb-open', kbPx > 60);
+    /* ====== iOS keyboard safe area robusta ====== */
+    (function setupKeyboardSafeArea(){
+      const VV = window.visualViewport;
+      if (!VV) return;
+
+      function computeKb(){
+        // Diferencia real considerando offsetTop de la viewport visual (iOS)
+        const innerH = window.innerHeight || 0;
+        const vvH    = VV.height || innerH;
+        const vvTop  = VV.offsetTop || 0;
+        const kb     = Math.max(0, innerH - (vvH + vvTop));
+        return kb;
+      }
+
+      function raf2(fn){ requestAnimationFrame(()=>requestAnimationFrame(fn)); }
+
+      function updateKb(){
+        const kb = computeKb();
+        html.style.setProperty('--kb-safe', (kb>0? kb : 0) + 'px');
+        if (editorSheet) editorSheet.classList.toggle('kb-open', kb > 0);
         measureFooter();
-      };
-      updateKb();
-      vv.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(updateKb, 50); }, { passive: true });
-      vv.addEventListener('scroll',  () => { clearTimeout(t); t = setTimeout(updateKb, 50); }, { passive: true });
-    }
+      }
+
+      // Primer layout correcto al abrir
+      raf2(updateKb);
+      setTimeout(updateKb, 180); // cuando termina la animación del teclado
+
+      VV.addEventListener('resize', ()=>{ raf2(updateKb); setTimeout(updateKb, 120); }, {passive:true});
+      VV.addEventListener('scroll',  ()=>{ raf2(updateKb); }, {passive:true});
+      window.addEventListener('focusin',  ()=>{ raf2(updateKb); setTimeout(updateKb,120); }, {passive:true});
+      window.addEventListener('focusout', ()=>{ raf2(updateKb); setTimeout(updateKb,60);  }, {passive:true});
+      window.addEventListener('orientationchange', ()=>{ setTimeout(()=>{ raf2(updateKb); }, 180); }, {passive:true});
+      window.addEventListener('pageshow', ()=>{ raf2(updateKb); }, {passive:true});
+    })();
 
     // Observar apertura/cierre del editor para medir footer al mostrarse
     (() => {
@@ -207,9 +205,7 @@
       mo.observe(editorSheet, { attributes: true, attributeFilter: ['hidden','class'] });
     })();
 
-    // Estado inicial
     applyOrientationLock();
-    setupKeyboardSafeArea();
     window.addEventListener('pageshow', () => { applyOrientationLock(); measureFooter(); }, { passive:true });
 
     const safeApply = () => setTimeout(applyOrientationLock, 0);
@@ -229,18 +225,13 @@
     if (!editorBody) return;
 
     function ensureInView(target){
-      setTimeout(()=>{
-        try{ target.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' }); }catch(_){}
-      }, 35);
+      setTimeout(()=>{ try{ target.scrollIntoView({ block:'nearest', inline:'nearest', behavior:'smooth' }); }catch(_){}} , 35);
     }
 
     editorBody.addEventListener('focusin', (e)=>{
-      const t = e.target;
-      if (!t) return;
+      const t = e.target; if (!t) return;
       const tag = (t.tagName||'').toUpperCase();
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'){
-        ensureInView(t);
-      }
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'){ ensureInView(t); }
     }, { passive:true });
   })();
   </script>

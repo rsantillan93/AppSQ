@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Order & Items</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
+  <link rel="preconnect" href="https://script.google.com" crossorigin>
+  <link rel="preconnect" href="https://www.google.com" crossorigin>
+  <link rel="preconnect" href="https://ssl.gstatic.com" crossorigin>
+  <link rel="dns-prefetch" href="https://script.google.com">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Rotate Overlay (portrait-only enforcement) -->
+  <div id="rotate-overlay" role="dialog" aria-live="assertive" aria-hidden="true">
+    <div class="rotate-card" role="document">
+      <svg class="phone-icon" viewBox="0 0 64 64" aria-hidden="true">
+        <rect x="16" y="8" width="32" height="48" rx="6" ry="6" fill="none" stroke="currentColor" stroke-width="3"></rect>
+        <rect x="20" y="12" width="24" height="40" rx="3" ry="3" fill="currentColor" opacity="0.12"></rect>
+        <g class="rotate-arrow">
+          <path d="M38 54a18 18 0 1 1 12-5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"></path>
+          <polyline points="49,44 51,53 42,51" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></polyline>
+        </g>
+      </svg>
+      <div class="rotate-title">ROTATE TO PORTRAIT</div>
+      <div class="rotate-hint">This app works in portrait mode only.</div>
+    </div>
+  </div>
+
+  <!-- Boot overlay -->
+  <div id="bootMask" class="boot-mask" aria-live="polite">
+    <div class="boot-card">
+      <div class="dots" aria-hidden="true"><span></span><span></span><span></span></div>
+      <div class="boot-text">Loading…</div>
+      <div class="boot-sub">Preparing order and items</div>
+    </div>
+  </div>
+
+  <header id="top">
+    <div class="title" id="clientName">Loading…</div>
+    <div class="subtitle" id="orderInfo"></div>
+  </header>
+
+  <main>
+    <section id="itemsGrid" class="grid"></section>
+    <div id="empty" class="empty" hidden>No data for that order.</div>
+  </main>
+
+  <!-- ===== SHEET 1: LIST ===== -->
+  <div id="overlay" class="overlay" hidden></div>
+
+  <section id="sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" hidden>
+    <div class="sheet__header">
+      <button id="sheetBack" class="sheet__back" aria-label="Back">←</button>
+      <div class="sheet__title" id="sheetTitle">Selected Item</div>
+    </div>
+
+    <div class="sheet__body sheet1-body">
+      <button id="btnAdd" class="cta">Add</button>
+
+      <div id="summary" class="summary" aria-live="polite">
+        <div><b>Total players:</b> 0</div>
+        <div id="summarySizes">Sizes: —</div>
+      </div>
+
+      <div id="list" class="list" role="list"></div>
+    </div>
+  </section>
+
+  <!-- ===== SHEET 2: EDITOR ===== -->
+  <div id="overlay2" class="overlay overlay-strong" hidden></div>
+
+  <section id="editorSheet" class="sheet sheet-editor" role="dialog" aria-modal="true" hidden>
+    <div class="sheet__body editor-body">
+      <div class="editor-inner">
+        <div class="field">
+          <label for="ePlayer">Player</label>
+          <input id="ePlayer" class="input" type="text" placeholder="Enter player name">
+        </div>
+
+        <div class="field">
+          <label for="eCategory">Category</label>
+          <select id="eCategory" class="select">
+            <option value="">Select…</option>
+            <option value="YOUTH">Youth</option>
+            <option value="ADULT">Adult</option>
+            <option value="WOMEN">Women</option>
+            <option value="STANDARD">Standard</option>
+          </select>
+        </div>
+
+        <div id="eSizeField" class="field" hidden>
+          <label>Size</label>
+          <div id="eSizes" class="size-row" role="radiogroup" aria-label="Size"></div>
+        </div>
+
+        <div class="field">
+          <label for="eNumber">Number</label>
+          <input id="eNumber" class="input" type="tel" inputmode="numeric" pattern="[0-9]*" placeholder="e.g., 28">
+        </div>
+
+        <div class="field">
+          <label for="eName">Name</label>
+          <input id="eName" class="input" type="text" placeholder="Custom name">
+        </div>
+
+        <div class="field">
+          <label>Units</label>
+          <div class="qty" role="group" aria-label="Units">
+            <button id="qMinus" class="qty__btn" aria-label="Decrease">−</button>
+            <input id="eUnits" class="qty__input" type="tel" inputmode="numeric" pattern="[0-9]*" min="1" max="100" value="1">
+            <button id="qPlus" class="qty__btn" aria-label="Increase">+</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer dentro del sheet (NO fixed) -->
+    <div class="actions-footer">
+      <div class="actions-inner">
+        <div class="actions-row">
+          <button id="eDelete" class="action danger" hidden>Delete</button>
+        </div>
+        <div class="actions-row two">
+          <button id="eSave" class="action primary">Save</button>
+          <button id="eCancel" class="action">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script defer src="app.js"></script>
+
+  <script>
+  (function () {
+    const html        = document.documentElement;
+    const overlay     = document.getElementById('rotate-overlay');
+    const editorSheet = document.getElementById('editorSheet');
+
+    // Detección robusta de orientación física (ignora teclado)
+    function isPhysicalLandscape() {
+      try {
+        if (screen.orientation && typeof screen.orientation.type === 'string') {
+          return screen.orientation.type.startsWith('landscape');
+        }
+        if (typeof screen.orientation?.angle === 'number') {
+          return Math.abs(screen.orientation.angle) === 90;
+        }
+      } catch (_) {}
+
+      if (typeof window.orientation === 'number') {
+        return Math.abs(window.orientation) === 90;
+      }
+
+      if (typeof screen.width === 'number' && typeof screen.height === 'number') {
+        return screen.width > screen.height;
+      }
+
+      try {
+        return !!window.matchMedia && window.matchMedia('(orientation: landscape)').matches;
+      } catch (_) { return false; }
+    }
+
+    function applyOrientationLock() {
+      const landscape = isPhysicalLandscape();
+      if (landscape) {
+        html.classList.add('landscape-touch');
+        overlay && overlay.setAttribute('aria-hidden', 'false');
+      } else {
+        html.classList.remove('landscape-touch');
+        overlay && overlay.setAttribute('aria-hidden', 'true');
+      }
+    }
+
+    // Medir footer y ajustar variables
+    function measureFooter(){
+      const f = document.querySelector('#editorSheet .actions-footer');
+      const h = Math.max(60, f ? (f.offsetHeight || 0) : 0);
+      html.style.setProperty('--footer-h', h + 'px');
+    }
+
+    // Ajuste seguro para teclado (kb-safe) + elevar sheet
+    function setupKeyboardSafeArea() {
+      if (!('visualViewport' in window) || !window.visualViewport) return;
+      const vv = window.visualViewport;
+      let t;
+      const updateKb = () => {
+        const kbPx = Math.max(0, (window.innerHeight || 0) - (vv.height || 0));
+        html.style.setProperty('--kb-safe', kbPx ? kbPx + 'px' : '0px');
+        if (editorSheet) editorSheet.classList.toggle('kb-open', kbPx > 60);
+        measureFooter();
+      };
+      updateKb();
+      vv.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(updateKb, 50); }, { passive: true });
+      vv.addEventListener('scroll',  () => { clearTimeout(t); t = setTimeout(updateKb, 50); }, { passive: true });
+    }
+
+    // Observar apertura/cierre del editor para medir footer al mostrarse
+    (() => {
+      if (!editorSheet) return;
+      const mo = new MutationObserver(() => {
+        if (!editorSheet.hasAttribute('hidden')) {
+          setTimeout(() => { measureFooter(); }, 50);
+        }
+      });
+      mo.observe(editorSheet, { attributes: true, attributeFilter: ['hidden','class'] });
+    })();
+
+    // Estado inicial
+    applyOrientationLock();
+    setupKeyboardSafeArea();
+    window.addEventListener('pageshow', () => { applyOrientationLock(); measureFooter(); }, { passive:true });
+
+    const safeApply = () => setTimeout(applyOrientationLock, 0);
+    if (screen.orientation && screen.orientation.addEventListener) {
+      screen.orientation.addEventListener('change', safeApply, { passive: true });
+    }
+    window.addEventListener('orientationchange', safeApply, { passive: true });
+    window.addEventListener('resize', safeApply, { passive: true });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) safeApply(); }, { passive: true });
+  })();
+  </script>
+
+  <script>
+  (function(){
+    const editorSheet = document.getElementById('editorSheet');
+    const editorBody  = editorSheet ? editorSheet.querySelector('.editor-body') : null;
+    if (!editorBody) return;
+
+    function ensureInView(target){
+      setTimeout(()=>{
+        try{ target.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' }); }catch(_){}
+      }, 35);
+    }
+
+    editorBody.addEventListener('focusin', (e)=>{
+      const t = e.target;
+      if (!t) return;
+      const tag = (t.tagName||'').toUpperCase();
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'){
+        ensureInView(t);
+      }
+    }, { passive:true });
+  })();
+  </script>
+</body>
+</html>

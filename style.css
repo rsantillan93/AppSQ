@@ -118,7 +118,6 @@ body.modal-open{ overflow:hidden; }
 }
 .sheet.show{ margin-top: 0; opacity:1; pointer-events:auto; }
 
-/* ===== Sheet 1 ===== */
 .sheet__header{
   position:sticky; top:0; z-index:2;
   display:flex; align-items:center; gap:10px;
@@ -157,38 +156,35 @@ body.modal-open{ overflow:hidden; }
 .cta{ height:46px; border-radius:12px; background:#111; color:#fff; border:2px solid #111; font-weight:900; }
 .summary{ padding:12px; border:2px solid #111; border-radius:12px; background:#fafafa; font-size:14px; line-height:1.35; }
 
-/* ===== Sheet 2 (editor): GRID 3 filas (header | body scroll | footer fijo) ===== */
+/* ===== Sheet 2 (editor): scroll en la CAJA + footer sticky ===== */
 .sheet.sheet-editor{
   z-index:2100;
   inset: max(6%, 6vh) 4% max(6%, env(safe-area-inset-bottom, 0px)) 4%;
-  display: grid;
-  grid-template-rows: auto 1fr auto; /* <-- CLAVE */
-  overflow: hidden;                  /* el contenedor NO scrollea */
-  -webkit-overflow-scrolling: auto;
-}
-
-/* Body del editor: único scroll */
-.editor-body{
-  padding:14px 16px 16px;
-  overflow-y: auto;                  /* <-- CLAVE: scroll solo aquí */
-  overflow-x: hidden;
-  min-height: 0;
-  scroll-padding-bottom: calc(var(--footer-h) + var(--kb-safe));
+  overflow-y:auto;                 /* scroll vive en la caja */
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: contain;
+}
+.editor-body{
+  padding:14px 0 0;
+  overflow: visible;               /* sin scroll aquí */
+  display:block;
+  min-height: 0;
+  -webkit-overflow-scrolling: auto;
+  overscroll-behavior: contain;
   scrollbar-gutter: stable both-edges;
 }
-.editor-inner{ display:grid; gap:14px; max-width:560px; margin:0 auto; width:100%; }
+.editor-inner{ display:grid; gap:14px; padding-inline:16px; max-width:560px; margin:0 auto; }
 .editor-inner::after{ content:""; display:block; height:0; }
 
-/* Footer fijo en el borde inferior de la CAJA (sin sticky ni fixed global) */
+/* Footer sticky DENTRO de la caja del sheet */
 .actions-footer{
-  background:#fff;
-  border-top:1px solid #ddd;
+  position:sticky;
+  left:0; right:0; bottom:0;
+  z-index:1;
+  background:#fff; border-top:1px solid #ddd;
   padding:12px 16px;
+  touch-action: manipulation;
   border-radius: 0 0 18px 18px;
-  /* No sticky, no fixed: lo fija la grid (3ra fila) */
-  margin-bottom: calc(var(--kb-safe, 0px));
+  margin-bottom: calc(var(--kb-safe, 0px)); /* empuje por teclado */
 }
 .actions-inner{ display:grid; gap:10px; }
 .actions-row{ display:grid; grid-template-columns: 1fr; gap:10px; }
@@ -245,12 +241,11 @@ body.modal-open{ overflow:hidden; }
 .qty__input{ -moz-appearance:textfield; appearance:textfield; }
 .qty__input::-webkit-outer-spin-button, .qty__input::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
 
-/* Safe-area en footer cuando hay notch */
 @supports (padding: max(0px)) {
   .actions-footer{ padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
 }
 
-/* === Alturas con teclado: la CAJA (sheet) se achica/eleva, el footer sigue fijo en su borde === */
+/* === Alturas con teclado: la CAJA se achica y sube === */
 .sheet.sheet-editor.kb-open{
   inset: max(6%, 6vh) 4%
          calc(max(6%, env(safe-area-inset-bottom, 0px)) + var(--kb-safe, 0px))
@@ -262,7 +257,7 @@ body.modal-open{ overflow:hidden; }
   .sheet.sheet-editor.kb-open{ max-height: calc(100dvh - var(--kb-safe) - 12%) }
 }
 
-/* Loading & misc */
+/* Loading mask, misc */
 .loading-mask{ position:absolute; inset:0; display:none; place-items:center; background: rgba(255,255,255,.55); z-index: 5; }
 .loading-mask.show{ display:grid; }
 .spinner{ width:28px; height:28px; border:3px solid #111; border-right-color:transparent; border-radius:50%; animation: spin .7s linear infinite; }
@@ -280,14 +275,15 @@ button[disabled]{ opacity:.55; pointer-events:none; }
 @media (min-width: 600px){
   .sheet.sheet-editor{
     inset: max(24px, 6vh) 4% auto 4%;
-    max-height: none; /* en desktop sin límite */
+    max-height: none; /* en desktop no limitamos */
   }
-  .editor-body{ min-height:auto; }
+  .editor-body{ min-height:auto; padding-bottom:16px; }
+  .sheet.sheet-editor .sheet__body{ overflow:visible; }
   .editor-inner{ max-width: 640px; margin: 0 auto; }
 }
 
-/* Utilidades y estados */
 .input, .qty__input{ scroll-margin-top: 12px; scroll-margin-bottom: 16px; }
+
 .no-data header{ display:none !important; }
 .no-data main{ padding:0 !important; }
 
